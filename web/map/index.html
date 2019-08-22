@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8'/>
+    <title></title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'/>
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v1.2.1/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v1.2.1/mapbox-gl.css' rel='stylesheet'/>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div id='map'></div>
+<script>
+
+    let style = "os_zoomstack_light.json";
+    let debug = false;
+
+    if (window.location.hash) {
+        // the following is pretty noddy, but enough to get things going for now
+
+        // first check for style
+        const hash = window.location.hash.toLowerCase();
+
+        if (hash.indexOf("night") !== -1) {
+            style = "os_zoomstack_night.json";
+        } else if (hash.indexOf("outdoor") !== -1) {
+            style = "os_zoomstack_outdoor.json";
+        } else if (hash.indexOf("road") !== -1) {
+            style = "os_zoomstack_road.json";
+        }
+
+        // check for debug tiles
+        debug = hash.indexOf("debug=true") !== -1;
+    }
+
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: style,
+        center: [-1.464858786792547, 50.939150779110975],
+        zoom: 10,
+        maxzoom: 14,
+        pitch: 0,
+        hash: true,
+        transformRequest: (url, resourceType)=> {
+            if(url.startsWith('http://{host}')) {
+                return {
+                    url: url.replace('http://{host}', 'http://localhost:8080'),
+                    credentials: 'include'  // Include cookies for cross-origin requests
+                }
+            }
+        }
+    });
+
+    // enable this for some debug
+    map.showTileBoundaries = debug;
+    map.on('click', function (e) {
+        const features = map.queryRenderedFeatures(e.point);
+        console.log(JSON.stringify(features, null, 2));
+    });
+</script>
+
+</body>
+</html>
