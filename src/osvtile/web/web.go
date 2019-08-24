@@ -1,13 +1,13 @@
 package web
 
 import (
-    "crypto/md5"
-    "fmt"
+    "encoding/json"
     "github.com/gorilla/mux"
     "io"
     "log"
     "net/http"
     "os"
+    "osdata/osvtile/container/lru"
     "osdata/osvtile/mvt"
     "path/filepath"
     "strconv"
@@ -46,9 +46,35 @@ func (e *Error) Error() string {
     return e.Message
 }
 
-func NewStatusHandler() http.HandlerFunc {
+
+func NewStatusHandler(cache *lru.LRU) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
+
+        if r.Method == "OPTIONS" {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+
+        w.Header().Add("content-type", "application/json")
         w.WriteHeader(http.StatusOK)
+
+        elms, size, maxsize := cache.Status()
+        status := map[string]interface{} {
+            "cache": map[string]interface{} {
+                "elements": elms,
+                "size": size,
+                "maxSize": maxsize,
+        },
+        }
+
+        packet, _ := json.Marshal(status)
+        w.Header().Add("content-size", strconv.Itoa(len(packet)))
+        _, err := w.Write(packet)
+
+        if err != nil {
+            log.Printf("failed to write status to client: error = %s", err)
+        }
+
         return
     }
 }
@@ -118,49 +144,38 @@ func NewFontHandler(path string) http.HandlerFunc {
     }
 }
 
-func NewMVTRequestHandler(d *mvt.MVT) http.HandlerFunc {
+func NewMVTRequestHandler(d *mvt.MVT, cache *lru.LRU) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         vars := mux.Vars(r)
         x, _ := strconv.Atoi(vars["x"])
         y, _ := strconv.Atoi(vars["y"])
         z, _ := strconv.Atoi(vars["z"])
 
-        // coords are sent as TMS, but we need xyz as the tiles are created as EPSG3857 (XYZ)
-        newy := (1 << uint(z)) - y - 1
-
-        //key := fmt.Sprintf("%s_%s_%s", vars["x"], vars["y"], vars["z"])
-
-        log.Printf("handling tile request: x = %d, z = %d, y = %d, tms y = %d", x, z, y, newy)
-        tile, err := d.FetchTile(x, newy, z)
+        var err error
+        tile, md5 := cache.Get(r.RequestURI)
 
         if tile == nil {
-            // attempt to do straight lookup
             tile, err = d.FetchTile(x, y, z)
 
-            if tile != nil {
-                log.Printf(
-                    "WARNING tile was looked up as XYZ and not TMS: x = %d, z = %d, y = %d, tms y = %d",
-                    x, z, y, newy,
-                )
+            if tile == nil {
+                w.WriteHeader(http.StatusNotFound)
+                return
             }
-        }
 
-        if tile == nil {
-            w.WriteHeader(http.StatusNotFound)
-            return
-        }
+            if err != nil {
+                log.Printf("failed to fetch tile from datasource: error = %s", err)
+                w.WriteHeader(http.StatusInternalServerError)
+                return
+            }
 
-        if err != nil {
-            log.Printf("failed to fetch tile from datasource: error = %s", err)
-            w.WriteHeader(http.StatusInternalServerError)
-            return
+            md5 = cache.Set(r.RequestURI, tile)
         }
 
         // tiles are in gzip format already
         w.Header().Set("content-length", strconv.Itoa(len(tile)))
         w.Header().Set("content-encoding", "gzip")
         w.Header().Set("content-type", "application/x-protobuf")
-        w.Header().Set("etag", fmt.Sprintf("%x", md5.Sum(tile)))
+        w.Header().Set("etag", md5)
         w.WriteHeader(http.StatusOK)
         c, err := w.Write(tile)
 

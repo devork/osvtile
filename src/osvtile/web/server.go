@@ -17,7 +17,7 @@ type Server struct {
 }
 
 // NewServer constructs a web server which can then be invoked via the `Server.Run()` command.
-func NewServer(router http.Handler, port int) (*Server) {
+func NewServer(router http.Handler, port int) *Server {
 	s := &http.Server{
 		Addr:           fmt.Sprintf(":%d", port),
 		Handler:        router,

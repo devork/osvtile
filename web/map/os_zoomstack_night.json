@@ -36,7 +36,10 @@
     "sources": {
         "composite": {
             "type": "vector",
-            "tiles": ["http://{host}/{z}/{x}/{y}/tile.mvt"]
+            "tiles": ["http://{host}/{z}/{x}/{y}/tile.mvt"],
+            "minzoom": 0,
+            "maxzoom": 14,
+            "scheme": "tms"
         }
     },
     "sprite": "http://{host}/sprites/sprites",

@@ -7,8 +7,18 @@ import (
     "github.com/gorilla/mux"
     "log"
     "net/http"
+    "osdata/osvtile/container/lru"
     "osdata/osvtile/mvt"
     "osdata/osvtile/web"
+    "regexp"
+    "strconv"
+    "strings"
+)
+
+const (
+    kb int64 = 1024
+    mb int64 = kb * 1024
+    gb int64 = mb * 1024
 )
 
 func main() {
@@ -25,10 +35,33 @@ func main() {
     proxy := flag.Bool("proxy", false, "enable proxy header support (when behind nginx, apache etc)")
     mbtiles := flag.String("mbtiles", ".", "location of the mbtiles package to serve up")
     static := flag.String("static", ".", "directory to the root static web content (index.html, style etc)")
+    cacheSize := flag.String("cache", "512m", "cache size: format <INTEGER><k|m|g>, e.g. 1g or 512mb")
 
     flag.Parse()
 
     log.Println("server starting")
+
+    // parse the cache size
+    re := regexp.MustCompile(`([1-9]\d*)([kmg])`)
+    matches := re.FindStringSubmatch(strings.TrimSpace(*cacheSize))
+
+    if matches == nil || len(matches) == 0 {
+        log.Fatalf("invalid cacheSize value: value = %s", *cacheSize)
+    }
+
+    size, _ := strconv.Atoi(matches[1])
+    bytesize := int64(0)
+
+    switch matches[2] {
+    case "g":
+        bytesize = int64(size) * gb
+    case "m":
+        bytesize = int64(size) * mb
+    default:
+        bytesize = int64(size) * kb
+    }
+
+    cache := lru.New(bytesize)
 
     // mvt dataasource
     ds, err := mvt.NewMVT(*mbtiles)
@@ -88,9 +121,9 @@ func main() {
     h = web.NewRequestHandler(web.NewClacksHandler(h))
 
     // routes
-    r.HandleFunc("/status", web.NewStatusHandler())
-    r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds))
-    r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds))
+    r.HandleFunc("/status", web.NewStatusHandler(cache))
+    r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds, cache))
+    r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds, cache))
     r.HandleFunc("/fonts/{stack}/{file}", web.NewFontHandler(fmt.Sprintf("%s/fonts", *static)))
     r.PathPrefix("/").Handler(http.FileServer(http.Dir(*static)))
     r.NotFoundHandler = http.HandlerFunc(web.NotFounderHandler)

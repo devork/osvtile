@@ -68,7 +68,6 @@ type MVT struct {
 // Fetch tile will query the package to return a given tile at the specified location and zoom. If no tile is found
 // this func will return a `nil,nil`
 func (m *MVT) FetchTile(x, y, z int) ([]byte, error) {
-    log.Printf("querying for tile data: x = %d, y = %d, z = %d", x, y ,z)
     var tile []byte
 
     err := m.db.QueryRow(
