@@ -16,6 +16,12 @@ type node struct {
     md5   string
 }
 
+type Status struct {
+    Elements int   `json:"elements"`
+    Size     int64 `json:"size"`
+    MaxSize  int64 `json:"maxSize"`
+}
+
 // LRU is the basic implementation of an LRU cache
 type LRU struct {
     rw      *sync.RWMutex
@@ -56,8 +62,8 @@ func (l *LRU) Set(key string, value []byte) string {
 
 // Get will fetch the value for the given key or return nil if it does not exist
 func (l *LRU) Get(key string) ([]byte, string) {
-    l.rw.Lock()
-    defer l.rw.Unlock()
+    l.rw.RLock()
+    defer l.rw.RUnlock()
 
     if e, ok := l.dict[key]; ok {
         n := e.Value.(*node)
@@ -97,10 +103,20 @@ func (l *LRU) Delete(key string) {
 // + number of elements
 // + current byte size
 // + maximum byte size
-func (l *LRU) Status() (int, int64, int64) {
+func (l *LRU) Status() *Status {
     l.rw.RLock()
     defer l.rw.RUnlock()
-    return len(l.dict), l.size, l.maxsize
+    return &Status{len(l.dict), l.size, l.maxsize}
+}
+
+// Clear will empty the cache completely
+func (l *LRU) Clear() {
+    l.rw.Lock()
+    defer l.rw.Unlock()
+
+    l.dict = map[string]*list.Element{}
+    l.list = list.New()
+    l.size = 0
 }
 
 // New will create a LRU instance with the given size of elements

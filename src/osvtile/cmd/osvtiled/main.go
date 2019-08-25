@@ -78,6 +78,8 @@ func main() {
 
     log.Printf("loaded MBtiles package: version = %v", v)
 
+    metrics := web.NewMetrics()
+
     r := mux.NewRouter()
 
     // add in the wrappers
@@ -118,10 +120,10 @@ func main() {
     }
 
     // default handlers will be the logger and clacks
-    h = web.NewRequestHandler(web.NewClacksHandler(h))
+    h = web.NewRequestHandler(metrics, web.NewClacksHandler(h))
 
     // routes
-    r.HandleFunc("/status", web.NewStatusHandler(cache))
+    r.HandleFunc("/status", web.NewStatusHandler(metrics, cache))
     r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds, cache))
     r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds, cache))
     r.HandleFunc("/fonts/{stack}/{file}", web.NewFontHandler(fmt.Sprintf("%s/fonts", *static)))

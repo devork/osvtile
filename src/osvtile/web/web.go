@@ -46,8 +46,7 @@ func (e *Error) Error() string {
     return e.Message
 }
 
-
-func NewStatusHandler(cache *lru.LRU) http.HandlerFunc {
+func NewStatusHandler(metrics *Metrics, cache *lru.LRU) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
 
         if r.Method == "OPTIONS" {
@@ -58,13 +57,12 @@ func NewStatusHandler(cache *lru.LRU) http.HandlerFunc {
         w.Header().Add("content-type", "application/json")
         w.WriteHeader(http.StatusOK)
 
-        elms, size, maxsize := cache.Status()
-        status := map[string]interface{} {
-            "cache": map[string]interface{} {
-                "elements": elms,
-                "size": size,
-                "maxSize": maxsize,
-        },
+        metrics.rw.RLock()
+        defer metrics.rw.RUnlock()
+
+        status := map[string]interface{}{
+            "cache": cache.Status(),
+            "requests": metrics,
         }
 
         packet, _ := json.Marshal(status)
@@ -88,7 +86,7 @@ func NewClacksHandler(h http.Handler) http.Handler {
 }
 
 // NewRequestHandler wraps a handler func to provide standard request logging and setup
-func NewRequestHandler(h http.Handler) http.Handler {
+func NewRequestHandler(m *Metrics, h http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         start := time.Now().UTC().UnixNano()
 
@@ -99,6 +97,8 @@ func NewRequestHandler(h http.Handler) http.Handler {
             "Request handled: addr: %s, method: %s, uri:%s, userAgent: %s, startTime: %d, deltaTime: %d, status:%d",
             r.RemoteAddr, r.Method, r.RequestURI, r.UserAgent(), start/1000, delta/1000, sw.status,
         )
+
+        m.Log(r, sw.status)
     })
 }
 
