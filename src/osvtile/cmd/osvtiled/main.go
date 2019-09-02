@@ -8,7 +8,7 @@ import (
     "log"
     "net/http"
     "osdata/osvtile/container/lru"
-    "osdata/osvtile/mvt"
+    "osdata/osvtile/mbtiles"
     "osdata/osvtile/web"
     "regexp"
     "strconv"
@@ -33,9 +33,10 @@ func main() {
     port := flag.Int("port", 8080, "port on which to run server")
     cors := flag.Bool("cors", false, "enable cors handling")
     proxy := flag.Bool("proxy", false, "enable proxy header support (when behind nginx, apache etc)")
-    mbtiles := flag.String("mbtiles", ".", "location of the mbtiles package to serve up")
+    zoomstack := flag.String("zoomstack", ".", "location of the zoomstack package to serve up")
     static := flag.String("static", ".", "directory to the root static web content (index.html, style etc)")
     cacheSize := flag.String("cache", "512m", "cache size: format <INTEGER><k|m|g>, e.g. 1g or 512mb")
+    hillshade := flag.String("hillshade", ".", "location of the hillshade package to serve up")
 
     flag.Parse()
 
@@ -63,20 +64,8 @@ func main() {
 
     cache := lru.New(bytesize)
 
-    // mvt dataasource
-    ds, err := mvt.NewMVT(*mbtiles)
-
-    if err != nil {
-        log.Fatalf("failed to load MBTiles package: error = %s", err)
-    }
-
-    v, err := ds.Version()
-
-    if err != nil {
-        log.Fatalf("failed to load MBTiles version: error = %s", err)
-    }
-
-    log.Printf("loaded MBtiles package: version = %v", v)
+    // vector datasource
+    zsds := loadMVT(*zoomstack)
 
     metrics := web.NewMetrics()
 
@@ -124,8 +113,15 @@ func main() {
 
     // routes
     r.HandleFunc("/status", web.NewStatusHandler(metrics, cache))
-    r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds, cache))
-    r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(ds, cache))
+    r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(zsds, cache))
+    r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(zsds, cache))
+
+    if hillshade != nil {
+        hsds := loadMVT(*hillshade)
+        r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/hs.png", web.NewRasterDEMRequestHandler(hsds, cache))
+        r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/hs.png", web.NewRasterDEMRequestHandler(hsds, cache))
+    }
+
     r.HandleFunc("/fonts/{stack}/{file}", web.NewFontHandler(fmt.Sprintf("%s/fonts", *static)))
     r.PathPrefix("/").Handler(http.FileServer(http.Dir(*static)))
     r.NotFoundHandler = http.HandlerFunc(web.NotFounderHandler)
@@ -141,4 +137,23 @@ func main() {
     }
 
     log.Println("server closed")
+}
+
+// util function to load an mbtiles package or fail and dump an error
+func loadMVT(path string) *mbtiles.MBTiles {
+    tiles, err := mbtiles.NewMVT(path)
+
+    if err != nil {
+        log.Fatalf("failed to load MBTiles package: error = %s", err)
+    }
+
+    v, err := tiles.Version()
+
+    if err != nil {
+        log.Fatalf("failed to load MBTiles version: error = %s", err)
+    }
+
+    log.Printf("loaded MBtiles package: path = %s, version = %v", path, v)
+
+    return tiles
 }

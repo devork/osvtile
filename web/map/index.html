@@ -28,6 +28,7 @@
 
     let style = "os_zoomstack_light.json";
     let debug = false;
+    let hillshade = false;
 
     if (window.location.hash) {
         // the following is pretty noddy, but enough to get things going for now
@@ -44,7 +45,8 @@
         }
 
         // check for debug tiles
-        debug = hash.indexOf("debug=true") !== -1;
+        debug = hash.indexOf("debug") !== -1;
+        hillshade = hash.indexOf("hillshade") !== -1;
     }
 
     const map = new mapboxgl.Map({
@@ -52,19 +54,35 @@
         style: style,
         center: [-1.464858786792547, 50.939150779110975],
         zoom: 10,
-        minZoom: 5,
+        minZoom: 4,
         maxZoom: 16,
         pitch: 0,
         hash: true,
-        transformRequest: (url, resourceType)=> {
-            if(url.startsWith('http://{host}')) {
+        transformRequest: (url, resourceType) => {
+            if (url.startsWith('http://{host}')) {
                 return {
                     url: url.replace('http://{host}', 'http://localhost:8080'),
-                    credentials: 'include'  // Include cookies for cross-origin requests
+                    credentials: 'include'
                 }
             }
         }
     });
+
+    if (hillshade) {
+        map.on('load', function () {
+            map.addSource('dem', {
+                "type": "raster-dem",
+                "tiles": ["http://{host}/{z}/{x}/{y}/hs.png"],
+                "minzoom": 4,
+                "maxzoom": 13
+            });
+            map.addLayer({
+                "id": "hillshading",
+                "source": "dem",
+                "type": "hillshade",
+            });
+        });
+    }
 
     // enable this for some debug
     map.showTileBoundaries = debug;

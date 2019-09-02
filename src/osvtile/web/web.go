@@ -8,7 +8,7 @@ import (
     "net/http"
     "os"
     "osdata/osvtile/container/lru"
-    "osdata/osvtile/mvt"
+    "osdata/osvtile/mbtiles"
     "path/filepath"
     "strconv"
     "strings"
@@ -144,7 +144,51 @@ func NewFontHandler(path string) http.HandlerFunc {
     }
 }
 
-func NewMVTRequestHandler(d *mvt.MVT, cache *lru.LRU) http.HandlerFunc {
+func NewRasterDEMRequestHandler(d *mbtiles.MBTiles, cache *lru.LRU) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        vars := mux.Vars(r)
+        x, _ := strconv.Atoi(vars["x"])
+        y, _ := strconv.Atoi(vars["y"])
+        z, _ := strconv.Atoi(vars["z"])
+
+        var err error
+        tile, md5 := cache.Get(r.RequestURI)
+
+        if tile == nil {
+            tile, err = d.FetchTile(x, y, z)
+
+            if tile == nil {
+                w.WriteHeader(http.StatusNotFound)
+                return
+            }
+
+            if err != nil {
+                log.Printf("failed to fetch tile from datasource: error = %s", err)
+                w.WriteHeader(http.StatusInternalServerError)
+                return
+            }
+
+            md5 = cache.Set(r.RequestURI, tile)
+        }
+
+        // tiles are in gzip format already
+        w.Header().Set("content-length", strconv.Itoa(len(tile)))
+        w.Header().Set("content-type", "image/png")
+        w.Header().Set("etag", md5)
+        w.WriteHeader(http.StatusOK)
+        c, err := w.Write(tile)
+
+        if err != nil {
+            log.Printf("failed to write tile data to client: error = %s", err)
+        }
+
+        if c != len(tile) {
+            log.Printf("failed to write whole tile to client: tile size = %d, written = %d", len(tile), c)
+        }
+    }
+}
+
+func NewMVTRequestHandler(d *mbtiles.MBTiles, cache *lru.LRU) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         vars := mux.Vars(r)
         x, _ := strconv.Atoi(vars["x"])

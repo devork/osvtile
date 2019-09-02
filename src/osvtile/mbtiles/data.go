@@ -1,4 +1,4 @@
-package mvt
+package mbtiles
 
 import (
     "database/sql"
@@ -59,15 +59,15 @@ func (v *Version) String() string {
     return fmt.Sprintf("version: {name = %s, format = %s}", v.Name, v.Format)
 }
 
-// MVT holds the datasource for tile information
-type MVT struct {
+// MBTiles holds the datasource for tile information
+type MBTiles struct {
     // the underlying mbtiles package
     db sql.DB
 }
 
-// Fetch tile will query the package to return a given tile at the specified location and zoom. If no tile is found
+// FetchTile will query the package to return a given tile at the specified location and zoom. If no tile is found
 // this func will return a `nil,nil`
-func (m *MVT) FetchTile(x, y, z int) ([]byte, error) {
+func (m *MBTiles) FetchTile(x, y, z int) ([]byte, error) {
     var tile []byte
 
     err := m.db.QueryRow(
@@ -87,7 +87,7 @@ func (m *MVT) FetchTile(x, y, z int) ([]byte, error) {
 }
 
 // Version will report the underlying MBTiles version information
-func (m *MVT) Version() (*Version, error) {
+func (m *MBTiles) Version() (*Version, error) {
     rows, err := m.db.Query("select * from metadata")
     if err != nil {
         return nil, err
@@ -101,7 +101,10 @@ func (m *MVT) Version() (*Version, error) {
         }
     }()
 
-    v := &Version{}
+    v := &Version{
+        Meta: map[string]string{},
+    }
+
     for rows.Next() {
         var key string
         var value string
@@ -146,13 +149,13 @@ func (m *MVT) Version() (*Version, error) {
     return v, nil
 }
 
-// Close will shutdown the MVT tile source
-func (m *MVT) Close() error {
+// Close will shutdown the MBTiles tile source
+func (m *MBTiles) Close() error {
     return m.db.Close()
 }
 
 // NewMVT will construct a new tile source dataset
-func NewMVT(path string) (*MVT, error) {
+func NewMVT(path string) (*MBTiles, error) {
     db, err := sql.Open("sqlite3", fmt.Sprintf("%s?mode=ro&_query_only=true&_mutex=no", path))
     if err != nil {
         return nil, err
@@ -162,8 +165,8 @@ func NewMVT(path string) (*MVT, error) {
         return nil, err
     }
 
-    log.Printf("created new MVT tile source: path = %s", path)
-    return &MVT{
+    log.Printf("created new MBTiles tile source: path = %s", path)
+    return &MBTiles{
         db: *db,
     }, nil
 }
