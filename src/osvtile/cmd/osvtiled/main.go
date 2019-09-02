@@ -17,8 +17,8 @@ import (
 
 const (
     kb int64 = 1024
-    mb int64 = kb * 1024
-    gb int64 = mb * 1024
+    mb       = kb * 1024
+    gb       = mb * 1024
 )
 
 func main() {
@@ -116,8 +116,10 @@ func main() {
     r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(zsds, cache))
     r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/tile.mvt", web.NewMVTRequestHandler(zsds, cache))
 
+    var hsds *mbtiles.MBTiles = nil
+
     if hillshade != nil {
-        hsds := loadMVT(*hillshade)
+        hsds = loadMVT(*hillshade)
         r.HandleFunc("/{name:[A-Za-z0-9_]+}/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/hs.png", web.NewRasterDEMRequestHandler(hsds, cache))
         r.HandleFunc("/{z:[0-9]+}/{x:[0-9]+}/{y:[0-9]+}/hs.png", web.NewRasterDEMRequestHandler(hsds, cache))
     }
@@ -131,6 +133,23 @@ func main() {
         h,
         *port,
     )
+
+    defer func() {
+
+        log.Println("closing zoomstack mbtile package")
+        if err := zsds.Close(); err != nil {
+            log.Printf("error closing zoomstack mbtile package: error = %s", err)
+        }
+
+        if hsds == nil {
+            return
+        }
+
+        log.Println("closing hillshade mbtile package")
+        if err := hsds.Close(); err != nil {
+            log.Printf("error closing hillshade mbtile package: error = %s", err)
+        }
+    }()
 
     if err := s.Run(); err != nil {
         log.Printf("failed to start server: error = %s", err)
